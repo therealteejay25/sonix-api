@@ -1,0 +1,86 @@
+# ========================================
+# 🧠 Core Node/Express Setup
+# ========================================
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+
+# ========================================
+# ⚙️ TypeScript & Logs
+# ========================================
+*.tsbuildinfo
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ========================================
+# 🧩 OS / Editor Junk
+# ========================================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ========================================
+# 🧰 Compiled Files & Caches
+# ========================================
+coverage/
+.cache/
+.next/
+out/
+temp/
+tmp/
+*.tmp
+
+# ========================================
+# 🔑 Sensitive Files
+# ========================================
+/config/*
+/secrets/*
+/keys/*
+/private/*
+/uploads/*
+/certs/*
+/firebase-service-account.json
+
+# ========================================
+# 🧪 Testing
+# ========================================
+/jest/
+coverage/
+test-output/
+*.spec.ts
+*.test.ts
+
+# ========================================
+# ⚡ Misc
+# ========================================
+*.bak
+*.old
+*.orig
+*.rej
+*.lock
+*.pid
+
+# ========================================
+# 🧱 Env and Security
+# ========================================
+.env
+.env.development
+.env.production
+.env.test
+.env.local
+.env.backup
+
+# ========================================
+# 🪣 OS metadata
+# ========================================
+ehthumbs.db
+Icon?
+Desktop.ini

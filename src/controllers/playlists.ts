@@ -87,9 +87,8 @@ async function fetchArtistTopTracks(artistId: string, token: string) {
  */
 export const generatePlaylist = async (req: Request, res: Response) => {
   const { mood, genres = [], count = 20 } = req.body;
-  const userId = (req as any).userId;
 
-  console.log("🟢 Starting intelligent playlist generation...");
+  console.log("🟢 Starting playlist generation...");
   console.log("Request body:", JSON.stringify(req.body));
 
   if (!mood || !Array.isArray(genres) || !genres.length) {
@@ -97,86 +96,47 @@ export const generatePlaylist = async (req: Request, res: Response) => {
   }
 
   try {
-    const user = userId ? await User.findById(userId) : null;
-    const userToken = user?.spotify?.accessToken;
-    const refreshToken = user?.spotify?.refreshToken;
-    let appToken: string | undefined = undefined;
-
-    if (!userToken) {
-      console.log("⚠️ No user token — using app client credentials for Spotify requests.");
-      appToken = await getAppAccessToken();
-    } else {
-      console.log("✅ User connected to Spotify (token present)");
-    }
-
-    // Map genres
+    // Map genres to Spotify-friendly names
     const genreMap: Record<string, string> = {
-      rnb: "r-n-b",
-      hiphop: "hip-hop",
-      edm: "edm",
       pop: "pop",
-      soul: "soul",
       rock: "rock",
       jazz: "jazz",
+      "hip-hop": "hip-hop",
       classical: "classical",
-      afrobeat: "afrobeat",
+      electronic: "edm",
+      "r&b": "r-n-b",
+      reggae: "reggae",
+      metal: "metal",
+      indie: "indie",
     };
-    const seedGenres = genres.map(g => genreMap[g.toLowerCase()] || g.toLowerCase()).slice(0, 2);
+    const seedGenres = genres
+      .map((g: string) => genreMap[g.toLowerCase()] || g.toLowerCase())
+      .slice(0, 2);
 
-    // Mood attributes
+    // Mood attributes based on frontend data
     const moodMap: Record<string, any> = {
-      chill: { energy: [0, 0.5], danceability: [0.4, 0.6], valence: [0.4, 0.6] },
-      sad: { energy: [0, 0.3], valence: [0, 0.4] },
-      party: { energy: [0.7, 1], danceability: [0.7, 1], valence: [0.6, 1] },
-      focus: { energy: [0.3, 0.6], instrumentalness: [0.5, 1] },
-      hype: { energy: [0.8, 1], valence: [0.7, 1] },
+      gloomy: { energy: [0, 0.3], valence: [0, 0.4] },
+      calm: { energy: [0, 0.5], danceability: [0.4, 0.6], valence: [0.4, 0.6] },
+      energetic: { energy: [0.7, 1], danceability: [0.6, 1], valence: [0.6, 1] },
+      focused: { energy: [0.3, 0.6], instrumentalness: [0.5, 1] },
+      happy: { energy: [0.6, 1], valence: [0.7, 1] },
+      nostalgic: { energy: [0.2, 0.5], valence: [0.3, 0.6] },
+      romantic: { energy: [0.3, 0.6], valence: [0.5, 0.8] },
+      adventurous: { energy: [0.6, 1], danceability: [0.5, 1], valence: [0.5, 1] },
+      chill: { energy: [0, 0.4], danceability: [0.3, 0.6], valence: [0.4, 0.6] },
+      inspired: { energy: [0.5, 0.8], valence: [0.6, 1] },
     };
     const target = moodMap[mood.toLowerCase()] || {};
 
+    const appToken = await getAppAccessToken(); // always use app credentials
+
     let candidateTracks: any[] = [];
 
-    // If user token → personalize
-    if (userToken) {
-      try {
-        console.log("Fetching user's top tracks & artists...");
-        const [tracksRes, artistsRes] = await Promise.all([
-          spotifyRequest("get", "https://api.spotify.com/v1/me/top/tracks?limit=5", {
-            accessToken: userToken,
-            refreshToken,
-            userId,
-          }),
-          spotifyRequest("get", "https://api.spotify.com/v1/me/top/artists?limit=5", {
-            accessToken: userToken,
-            refreshToken,
-            userId,
-          }),
-        ]);
-
-        const topTracks = tracksRes.data.items || [];
-        const topArtists = artistsRes.data.items || [];
-        candidateTracks.push(...topTracks);
-
-        for (const a of topArtists) {
-          try {
-            const artistTop = await fetchArtistTopTracks(a.id, userToken);
-            if (artistTop.length) candidateTracks.push(...artistTop.slice(0, 5));
-          } catch (err: any) {
-            console.log(`⚠️ Couldn't fetch top tracks for ${a.name}:`, err.message);
-          }
-        }
-      } catch (err: any) {
-        console.log("⚠️ Failed to fetch user's top tracks/artists:", err.message);
-      }
-    }
-
-    // Always search Spotify by genre + mood
+    // Search Spotify by genre + mood
     for (const genre of seedGenres) {
       try {
         const res = await spotifyRequest("get", "https://api.spotify.com/v1/search", {
-          accessToken: userToken,
           appToken,
-          refreshToken,
-          userId,
           params: { q: `${genre} ${mood}`, type: "track", limit: 50, market: "US" },
         });
         candidateTracks.push(...(res.data.tracks?.items || []));
@@ -185,7 +145,7 @@ export const generatePlaylist = async (req: Request, res: Response) => {
       }
     }
 
-    // Dedupe
+    // Dedupe tracks
     const byId = new Map<string, any>();
     for (const t of candidateTracks) if (t?.id && !byId.has(t.id)) byId.set(t.id, t);
     candidateTracks = Array.from(byId.values());
@@ -198,10 +158,7 @@ export const generatePlaylist = async (req: Request, res: Response) => {
     let featuresMap: Record<string, any> = {};
     try {
       const featuresResp = await spotifyRequest("get", "https://api.spotify.com/v1/audio-features", {
-        accessToken: userToken,
         appToken,
-        refreshToken,
-        userId,
         params: { ids: poolIds.join(",") },
       });
       for (const f of featuresResp.data.audio_features || []) if (f && f.id) featuresMap[f.id] = f;
@@ -209,7 +166,7 @@ export const generatePlaylist = async (req: Request, res: Response) => {
       console.log("⚠️ Audio-features fetch failed:", err.message);
     }
 
-    // Filter
+    // Filter tracks by mood
     const filtered = candidateTracks.filter(t => {
       const f = featuresMap[t.id];
       if (!f || Object.keys(target).length === 0) return true;
@@ -241,19 +198,13 @@ export const generatePlaylist = async (req: Request, res: Response) => {
       createdAt: new Date(),
     };
 
-    if (user) {
-      user.spotify.playlists = user.spotify.playlists || [];
-      user.spotify.playlists.push(draft as never);
-      await user.save();
-      console.log("✅ Draft saved to user.spotify.playlists");
-    }
-
     return res.json({ message: "Playlist generated successfully.", draft });
   } catch (err: any) {
     console.error("❌ Playlist generation error:", err.message);
     return res.status(500).json({ error: "Failed to generate playlist." });
   }
 };
+
 
 /**
  * Delete a track from draft
